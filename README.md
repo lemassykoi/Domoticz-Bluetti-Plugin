@@ -17,7 +17,7 @@ This is a Python plugin for Domoticz to monitor and control the Bluetti AC500 po
 
 *   Domoticz 2022.1 or later.
 *   Python 3.7 or later.
-*   `bluetti_mqtt` library installed.
+*   `bleak` and `crcmod` libraries installed.
 *   A Bluetooth adapter supported by your operating system.
 
 ## Installation
@@ -29,9 +29,8 @@ This is a Python plugin for Domoticz to monitor and control the Bluetti AC500 po
     ```
 2.  Install the required Python libraries:
     ```bash
-    pip3 install -r requirements.txt
+    pip3 install bleak crcmod
     ```
-    *(Note: a `requirements.txt` file may need to be created if one does not exist. See the source code for the required libraries.)*
 
 3.  Restart your Domoticz service.
 
@@ -51,7 +50,7 @@ Once configured, the plugin will create several devices in Domoticz to display t
 
 ## Troubleshooting
 
-*   **Plugin not starting**: Check the Domoticz log for any error messages. Ensure the `bluetti_mqtt` library is installed and accessible to the Domoticz user.
+*   **Plugin not starting**: Check the Domoticz log for any error messages. Ensure the `bleak` and `crcmod` libraries are installed and accessible to the Domoticz user.
 *   **Device not found**: Verify the Bluetti MAC address is correct and that the device is within Bluetooth range of your Domoticz server.
 *   **Intermittent connection**: Bluetooth signals can be affected by distance and obstacles. Try moving the Domoticz server closer to the Bluetti device.
 
