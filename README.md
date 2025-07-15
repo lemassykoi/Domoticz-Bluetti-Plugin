@@ -40,7 +40,7 @@ A standalone Domoticz plugin to control and monitor Bluetti AC500 power stations
 ## Configuration
 
 1. Go to **Setup → Hardware** in Domoticz
-2. Add hardware type: **Bluetti AC500 via BLE**
+2. Add hardware type: **Bluetti AC500 Poller via BLE**
 3. Enter your Bluetti's **MAC address** (format: XX:XX:XX:XX:XX:XX)
 4. Set **polling interval** (default: 20 seconds)
 5. Choose **debug level** if needed
