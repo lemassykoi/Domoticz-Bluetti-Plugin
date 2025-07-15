@@ -61,6 +61,8 @@ The plugin automatically creates these devices:
 - Grid Charge toggle
 - Time Control toggle
 
+<img width="1028" height="849" alt="image" src="https://github.com/user-attachments/assets/99e49748-2f48-4b0a-9296-1ee9fdbaf03a" />
+
 ### Advanced
 - Battery Range settings (Start/End percentage)
 - Time Control Schedule (decoded display)
