@@ -98,6 +98,10 @@ The plugin automatically creates these devices:
 - **v0.3.1**: Added UPS mode, battery range, time control features
 - **v0.2.1**: Initial BLE implementation
 
+## Thanks
+
+Inspired from https://github.com/ftrueck/bluetti_mqtt
+
 ## License
 
 MIT License - feel free to modify and distribute.
