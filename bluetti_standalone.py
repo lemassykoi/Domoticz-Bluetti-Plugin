@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Standalone Bluetti AC500 implementation - no bluetti_mqtt dependency
-Compatible with latest bleak version (>1.0.0)
+Compatible with latest bleak version
 """
 
 import asyncio
@@ -382,17 +382,47 @@ class SyncBluettiClient:
         """Start the client"""
         import threading
         self.loop = asyncio.new_event_loop()
-        self.loop_thread = threading.Thread(target=self.loop.run_forever, daemon=True)
+        self.loop_thread = threading.Thread(name="BluettiAsyncLoop", target=self.loop.run_forever, daemon=True)
         self.loop_thread.start()
         
     def stop(self):
-        """Stop the client"""
+        """Stop the client - ensure all threads terminate"""
         if self.connected:
             self.disconnect()
-        if self.loop:
-            self.loop.call_soon_threadsafe(self.loop.stop)
-        if self.loop_thread:
-            self.loop_thread.join(timeout=5)
+        if self.loop and self.loop_thread and self.loop_thread.is_alive():
+            try:
+                # Schedule loop stop
+                self.loop.call_soon_threadsafe(self.loop.stop)
+                
+                # Wait for thread to finish - this is critical for Domoticz compliance
+                self.loop_thread.join(timeout=10)
+                
+                # If thread is still alive, try more aggressive cleanup
+                if self.loop_thread.is_alive():
+                    try:
+                        if not self.loop.is_closed():
+                            # Cancel all pending tasks
+                            pending = asyncio.all_tasks(self.loop)
+                            for task in pending:
+                                self.loop.call_soon_threadsafe(task.cancel)
+                            # Wait again
+                            self.loop_thread.join(timeout=5)
+                    except Exception:
+                        pass
+                        
+                # Final check - log if thread still alive
+                if self.loop_thread.is_alive():
+                    if hasattr(self, 'logger'):
+                        self.logger.error(f"Asyncio loop thread '{self.loop_thread.name}' did not terminate - Domoticz may abort")
+                        
+            except Exception as e:
+                if hasattr(self, 'logger'):
+                    self.logger.error(f"Error during loop cleanup: {e}")
+            finally:
+                # Clean up references regardless
+                self.loop = None
+                self.loop_thread = None
+                self.connected = False
             
     def connect(self) -> bool:
         """Connect synchronously"""
