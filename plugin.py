@@ -1,18 +1,18 @@
 # Domoticz Python Plugin for Bluetti AC500 (Standalone Version)
 # Author: lemassykoi
-# Version: 0.5.0 - No bluetti_mqtt dependency, latest bleak compatible
+# Version: 0.5.1 - No bluetti_mqtt dependency, latest bleak compatible
 #
 """
-<plugin key="Bluetti-AC500" name="Bluetti AC500 Poller via BLE" author="lemassykoi" version="0.5.0" wikilink="https://github.com/lemassykoi/Domoticz-Bluetti-Plugin" externallink="https://www.bluettipower.com/">
+<plugin key="Bluetti-AC500" name="Bluetti AC500 Poller via BLE" author="lemassykoi" version="0.5.1" wikilink="https://github.com/lemassykoi/Domoticz-Bluetti-Plugin" externallink="https://www.bluettipower.eu/">
     <params>
         <param field="Address" label="Bluetti MAC Address" width="200px" required="true" default="XX:XX:XX:XX:XX:XX"/>
         <param field="Mode1" label="Polling Interval (seconds)" width="75px" required="true" default="20"/>
         <param field="Mode6" label="Debug Level" width="200px">
             <options>
                 <option label="0: None (Plugin Log only)" value="0" default="true"/>
-                <option label="1: Plugin Debug" value="1"/>
-                <option label="2: Plugin + BLE Library Debug" value="2"/>
-                <option label="10: All Debug (Verbose)" value="10"/>
+                <option label="1: Plugin Debug" value="2"/>
+                <option label="2: Plugin + BLE Library Debug" value="8"/>
+                <option label="10: All Debug (Verbose)" value="1"/>
             </options>
         </param>
         <param field="Port" label="BLE Adapter (e.g., hci0, default empty for auto)" width="150px" required="false" default=""/>
@@ -20,15 +20,11 @@
 </plugin>
 """
 
-import Domoticz
+import Domoticz # type: ignore
 import threading
 import queue
 import time
 import sys
-import os
-import struct
-import base64
-import logging
 from enum import Enum, unique
 
 # Use the standalone implementation
@@ -86,6 +82,8 @@ BLUETTI_DEVICE_DEFINITIONS = [
     ("Bluetti Time Control",          29, "Switch",           244, 73, "timecontrol",    0, 9, {}, {}, "time_control_on",           1),
     ("Bluetti Battery Range Start",   60, "Percentage",       243, 6,  "battrangestart", 0, 0, {}, {}, "battery_range_start",       0),
     ("Bluetti Battery Range End",     61, "Percentage",       243, 6,  "battrangeend",   0, 0, {}, {}, "battery_range_end",         0),
+    ("Bluetti Battery Range Start Control", 63, "Dimmer",     244, 73, "battrangestartctrl", 7, 0, {}, {}, "battery_range_start_control", 1),
+    ("Bluetti Battery Range End Control",   64, "Dimmer",     244, 73, "battrangeendctrl",   7, 0, {}, {}, "battery_range_end_control",   1),
     ("Bluetti Time Schedule",         62, "Text",             243, 19, "timeschedule",   0, 0, {}, {}, "time_control_programming",  1),
     ("Bluetti Internal AC Voltage",   14, "Voltage",          243, 8,  "intacvolt",      0, 0, {}, {}, "internal_ac_voltage",       0),
     ("Bluetti Internal AC Frequency", 17, "Custom",           243, 31, "intacfreq",      0, 0, {}, {}, "internal_ac_frequency",     0),
@@ -144,7 +142,7 @@ class BasePlugin:
         if self.polling_interval < 5:
             self.polling_interval = 5
 
-        Domoticz.Log(f"onStart: Parameters loaded. MAC:{self.bluetti_mac_address}, Poll:{self.polling_interval}s")
+        Domoticz.Log(f"onStart: Parameters loaded. MAC: {self.bluetti_mac_address}, Poll:{self.polling_interval}s")
 
         self.create_domoticz_devices()
 
@@ -181,38 +179,40 @@ class BasePlugin:
                     Used       = int(used)
                 ).Create()
 
-            # Apply update options if specified
-            if unit_id in Devices and update_opts_general:
-                try:
-                    current_dev_options = Devices[unit_id].Options if hasattr(Devices[unit_id], 'Options') else {}
-                    effective_options = current_dev_options.copy()
+                # Apply update options if specified
+                if unit_id in Devices and update_opts_general:
+                    try:
+                        current_dev_options = Devices[unit_id].Options if hasattr(Devices[unit_id], 'Options') else {}
+                        effective_options = current_dev_options.copy()
 
-                    options_changed = False
-                    for opt_key, opt_value in update_opts_general.items():
-                        if str(effective_options.get(opt_key)) != str(opt_value):
-                            effective_options[opt_key] = opt_value
-                            options_changed = True
-                    
-                    if options_changed: 
-                        Devices[unit_id].Update(nValue=Devices[unit_id].nValue, sValue="0;0", Options=effective_options)
+                        options_changed = False
+                        for opt_key, opt_value in update_opts_general.items():
+                            if str(effective_options.get(opt_key)) != str(opt_value):
+                                effective_options[opt_key] = opt_value
+                                options_changed = True
+                        
+                        if options_changed: 
+                            Devices[unit_id].Update(nValue=Devices[unit_id].nValue, sValue="0;0", Options=effective_options)
 
-                except Exception as e: 
-                    Domoticz.Error(f"Error applying update options to {name}: {e}")
+                    except Exception as e: 
+                        Domoticz.Error(f"Error applying update options to {name}: {e}")
 
-            elif unit_id in Devices and create_opts_selector:
-                try:
-                    Devices[unit_id].Update(nValue=0, sValue="0", Options=create_opts_selector)
-                except Exception as e: 
-                    Domoticz.Error(f"Error applying selector options to {name}: {e}")
+                elif unit_id in Devices and create_opts_selector:
+                    try:
+                        Devices[unit_id].Update(nValue=0, sValue="0", Options=create_opts_selector)
+                    except Exception as e: 
+                        Domoticz.Error(f"Error applying selector options to {name}: {e}")
 
-            elif unit_id in Devices and type_name == 'Custom':  # Frequency in Hertz
-                try:
-                    Devices[unit_id].Update(nValue=0, sValue="50.0", Options={'Custom': '1;Hertz'})
-                except Exception as e: 
-                    Domoticz.Error(f"Error applying custom options to {name}: {e}")
+                elif unit_id in Devices and type_name == 'Custom':  # Frequency in Hertz
+                    try:
+                        Devices[unit_id].Update(nValue=0, sValue="50.0", Options={'Custom': '1;Hertz'})
+                    except Exception as e: 
+                        Domoticz.Error(f"Error applying custom options to {name}: {e}")
+            else:
+                Domoticz.Log(f"Found existing Unit {unit_id} ('{name}')...")
 
             self.device_unit_map[json_key] = unit_id
-        
+
         # Battery pack devices
         for pack_num in [2, 4]: 
             for i, (name_suffix, type_name_pack, d_type_pack, d_subtype_pack, device_id_suffix_pack, d_switchtype_pack, d_image_pack, create_opts_selector_pack, update_opts_general_pack, json_key_suffix, used_pack) in enumerate(PACK_DEVICE_DEFINITIONS):
@@ -224,14 +224,22 @@ class BasePlugin:
                 if unit_id_pack not in Devices:
                     Domoticz.Log(f"Creating Unit {unit_id_pack} ('{dev_name_pack}')...")
                     Domoticz.Device(Name=dev_name_pack, Unit=unit_id_pack, TypeName=type_name_pack, DeviceID=full_device_id_pack, Used=used_pack).Create()
-                    
+
+                else:
+                    Domoticz.Log(f"Found existing Unit {unit_id} ('{name}')...")
+
                 self.device_unit_map[json_key_pack] = unit_id_pack
         
         Domoticz.Log(f"Device map populated with {len(self.device_unit_map)} entries.")
 
     def handle_thread(self):
-        """Threading handler using standalone client"""
+        """Threading handler using standalone client with connection retry"""
         Domoticz.Log("Update thread started with standalone client.")
+        
+        connected = False
+        retry_count = 0
+        max_retries = 10
+        retry_delay = 5  # seconds between retries
         
         try:            
             # Initialize standalone client
@@ -242,50 +250,79 @@ class BasePlugin:
             self.bluetti_client.start()
             time.sleep(1)
             
-            # Try to connect
-            Domoticz.Log("Attempting to connect to Bluetti device...")
-            connection_start = time.time()
-            
-            if not self.bluetti_client.connect():
-                connection_duration = time.time() - connection_start
-                Domoticz.Error(f"Failed to connect to Bluetti device (took {connection_duration:.1f}s)")
-                return
-            
-            connection_duration = time.time() - connection_start
-            Domoticz.Log(f"Connected to Bluetti device successfully (took {connection_duration:.1f}s)")
-            
-            # Main loop
+            # Main loop with connection retry logic
             while not self.shutdown_event.is_set():
                 try:
-                    # Process commands from queue
-                    try:
-                        item = self.command_queue.get_nowait()
-                        if item == "POLL_DATA":
-                            self._poll_data()
-                        elif isinstance(item, dict) and item.get("action") == "SEND_COMMAND":
-                            self._send_command(item['details'])
-                        self.command_queue.task_done()
-                    except queue.Empty:
-                        pass
+                    # Try to connect if not connected
+                    if not connected:
+                        Domoticz.Log(f"Attempting to connect to Bluetti device... (attempt {retry_count + 1}/{max_retries})")
+                        connection_start = time.time()
+                        
+                        if self.bluetti_client.connect():
+                            connection_duration = time.time() - connection_start
+                            Domoticz.Log(f"Connected to Bluetti device successfully (took {connection_duration:.1f}s)")
+                            connected = True
+                            retry_count = 0
+                        else:
+                            connection_duration = time.time() - connection_start
+                            retry_count += 1
+                            if retry_count <= max_retries:
+                                Domoticz.Log(f"Failed to connect to Bluetti device (took {connection_duration:.1f}s). Retry {retry_count}/{max_retries} in {retry_delay}s...")
+                                # Wait before retry, but check for shutdown
+                                for _ in range(retry_delay):
+                                    if self.shutdown_event.is_set():
+                                        break
+                                    time.sleep(1)
+                            else:
+                                Domoticz.Error(f"Failed to connect after {max_retries} attempts. Will retry on next heartbeat cycle.")
+                                retry_count = 0  # Reset for next cycle
+                                # Wait longer before trying again
+                                for _ in range(30):
+                                    if self.shutdown_event.is_set():
+                                        break
+                                    time.sleep(1)
+                            continue
+                    
+                    # Process commands from queue (only if connected)
+                    if connected:
+                        try:
+                            item = self.command_queue.get_nowait()
+                            if item == "POLL_DATA":
+                                if not self._poll_data():
+                                    # Polling failed, likely connection lost
+                                    connected = False
+                                    Domoticz.Log("Connection lost, will attempt to reconnect...")
+                            elif isinstance(item, dict) and item.get("action") == "SEND_COMMAND":
+                                if not self._send_command(item['details']):
+                                    # Command failed, likely connection lost
+                                    connected = False
+                                    Domoticz.Log("Command failed, connection may be lost...")
+                            self.command_queue.task_done()
+                        except queue.Empty:
+                            pass
                     
                     # Wait before next iteration
                     self.shutdown_event.wait(1.0)
                     
                 except Exception as e:
                     Domoticz.Error(f"Thread loop error: {e}")
+                    connected = False  # Assume connection lost on error
                     time.sleep(5)
                     
         except Exception as e:
             Domoticz.Error(f"Thread handler error: {e}")
         finally:
-            if self.bluetti_client:
-                try:
+            try:
+                if self.bluetti_client:
                     Domoticz.Log("Disconnecting standalone client...")
                     self.bluetti_client.stop()
                     Domoticz.Log("Standalone client stopped")
-                except Exception as e:
-                    Domoticz.Error(f"Error stopping client: {e}")
-            Domoticz.Log("Update thread finished.")
+            except Exception as e:
+                Domoticz.Error(f"Error stopping client in thread: {e}")
+            finally:
+                # Ensure client reference is cleared
+                self.bluetti_client = None
+                Domoticz.Log("Update thread finished.")
     
     def _poll_data(self):
         """Poll data using standalone client"""
@@ -298,11 +335,14 @@ class BasePlugin:
             if data:
                 self._update_domoticz_devices(data)
                 Domoticz.Log(f"Updated {len(data)} fields from Bluetti device")
+                return True
             else:
                 Domoticz.Log("WARNING: No data received from Bluetti device")
+                return False
                 
         except Exception as e:
             Domoticz.Error(f"Polling error: {e}")
+            return False
     
     def _send_command(self, command_details):
         """Send command using standalone client"""
@@ -322,13 +362,17 @@ class BasePlugin:
                     time.sleep(5)
                     # Queue a poll to update status
                     self.command_queue.put("POLL_DATA")
+                    return True
                 else:
                     Domoticz.Error("Command failed")
+                    return False
             else:
                 Domoticz.Error(f"Invalid command details: {command_details}")
+                return False
                 
         except Exception as e:
             Domoticz.Error(f"Command error: {e}")
+            return False
 
     def _decode_time_schedule(self, time_control_data):
         """Decode time control schedule"""
@@ -509,6 +553,16 @@ class BasePlugin:
                     if isinstance(raw_value, (int, float)) and 0 <= raw_value <= 100:
                         nvalue = int(raw_value)  # For percentage devices, nValue is the percentage
                         svalue = str(int(raw_value))  # sValue is just the number
+                        
+                        # Also update corresponding control device
+                        control_key = f"{json_key}_control"
+                        if control_key in self.device_unit_map:
+                            control_unit = self.device_unit_map[control_key]
+                            if control_unit in Devices:
+                                # Update control device to match current value
+                                # For dimmer: nValue=2 (on), sValue=percentage level
+                                Devices[control_unit].Update(nValue=2, sValue=str(int(raw_value)), TimedOut=0)
+                                Domoticz.Debug(f"Updated control Unit {control_unit} ({control_key}) to {int(raw_value)}%")
                     else:
                         nvalue = 0
                         svalue = f"Raw: {raw_value}"
@@ -538,33 +592,73 @@ class BasePlugin:
                 Domoticz.Error(f"Error processing field '{json_key}' for Unit {unit}: {e}")
 
     def onStop(self):
-        """Stop the plugin"""
+        """Stop the plugin - must not sleep or wait in callback"""
         Domoticz.Log("onStop: Stopping standalone plugin...")
         
-        # Signal shutdown
-        if self.shutdown_event: 
-            self.shutdown_event.set()
+        try:
+            # List all active threads for debugging (following Domoticz example)
+            for thread in threading.enumerate():
+                if thread.name != threading.current_thread().name:
+                    Domoticz.Log(f"'{thread.name}' is running, it must be shutdown otherwise Domoticz will abort on plugin exit.")
             
-        # Stop client
-        if hasattr(self, 'bluetti_client') and self.bluetti_client:
-            try:
-                self.bluetti_client.stop()
-            except Exception as e:
-                Domoticz.Error(f"Error stopping client: {e}")
+            # Signal shutdown to our update thread
+            if hasattr(self, 'shutdown_event') and self.shutdown_event: 
+                self.shutdown_event.set()
+                Domoticz.Log("Shutdown event signaled")
+            
+            # Stop BLE client (this should signal its threads to stop)
+            if hasattr(self, 'bluetti_client') and self.bluetti_client:
+                try:
+                    Domoticz.Log("Stopping Bluetti client...")
+                    self.bluetti_client.stop()
+                    Domoticz.Log("Bluetti client stop initiated")
+                except Exception as e:
+                    Domoticz.Error(f"Error stopping client: {e}")
+                finally:
+                    self.bluetti_client = None
+                    
+            # Wait for ALL threads to exit (following Domoticz example pattern)
+            Domoticz.Log(f"Threads still active: {threading.active_count()}, should be 1.")
+            max_wait_cycles = 30  # 30 seconds max wait
+            wait_cycle = 0
+            
+            while threading.active_count() > 1 and wait_cycle < max_wait_cycles:
+                for thread in threading.enumerate():
+                    if thread.name != threading.current_thread().name:
+                        Domoticz.Log(f"'{thread.name}' is still running, waiting otherwise Domoticz will abort on plugin exit.")
                 
-        # Wait for thread
-        if hasattr(self, 'update_thread') and self.update_thread and self.update_thread.is_alive():
-            self.update_thread.join(timeout=10)
-            if self.update_thread.is_alive(): 
-                Domoticz.Error("Update thread did not stop")
-        
-        Domoticz.Log("Plugin stopped successfully.")
+                # Wait for our update thread specifically
+                if hasattr(self, 'update_thread') and self.update_thread and self.update_thread.is_alive():
+                    self.update_thread.join(timeout=1.0)
+                else:
+                    # If no update thread, just wait a bit for other threads
+                    import time
+                    time.sleep(1.0)
+                    
+                wait_cycle += 1
+            
+            if threading.active_count() > 1:
+                Domoticz.Error(f"Timeout waiting for threads to stop. Active count: {threading.active_count()}")
+                for thread in threading.enumerate():
+                    if thread.name != threading.current_thread().name:
+                        Domoticz.Error(f"Thread '{thread.name}' did not stop")
+            else:
+                Domoticz.Log("All threads stopped successfully")
+            
+        except Exception as e:
+            Domoticz.Error(f"Error during plugin shutdown: {e}")
+        finally:
+            # Clean up references
+            self.shutdown_event = None
+            self.update_thread = None
+            self.command_queue = None
+            Domoticz.Log("Plugin stopped.")
 
     def onHeartbeat(self):
         """Heartbeat handler"""
         Domoticz.Debug("onHeartbeat called")
         if not (hasattr(self, 'update_thread') and self.update_thread and self.update_thread.is_alive()): 
-            Domoticz.Error("Update thread not running!")
+            Domoticz.Debug("Update thread not running (this is normal during connection retry cycles)")
             return
             
         current_time = time.time()
@@ -600,6 +694,24 @@ class BasePlugin:
                             Domoticz.Error(f"Invalid Level '{Level}' for UPS Mode")
                     except ValueError: 
                         Domoticz.Error(f"Invalid Level '{Level}' for UPS Mode.")
+                elif key == "battery_range_start_control":
+                    try:
+                        battery_val = int(Level)
+                        if 0 <= battery_val <= 100:
+                            cmd_details = {"register": 3015, "value": battery_val}  # Register 3015 for battery range start
+                        else:
+                            Domoticz.Error(f"Invalid Level '{Level}' for Battery Range Start (must be 0-100)")
+                    except ValueError:
+                        Domoticz.Error(f"Invalid Level '{Level}' for Battery Range Start.")
+                elif key == "battery_range_end_control":
+                    try:
+                        battery_val = int(Level)
+                        if 0 <= battery_val <= 100:
+                            cmd_details = {"register": 3016, "value": battery_val}  # Register 3016 for battery range end
+                        else:
+                            Domoticz.Error(f"Invalid Level '{Level}' for Battery Range End (must be 0-100)")
+                    except ValueError:
+                        Domoticz.Error(f"Invalid Level '{Level}' for Battery Range End.")
                         
                 if cmd_details: 
                     break
