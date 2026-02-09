@@ -8,95 +8,119 @@ A standalone Domoticz plugin to control and monitor Bluetti AC500 power stations
 - **Device control**: AC/DC output toggle, UPS mode selection, grid charging
 - **Time control**: Battery range settings and time-based charging schedules
 - **Battery pack monitoring**: Support for multiple battery packs
-- **No external dependencies**: Works with latest bleak version, no bluetti_mqtt required
+- **Room plan**: Automatically creates a Domoticz room plan and assigns devices
+- **Optimistic UI**: Switch and selector commands reflect instantly in the UI
+- **No external dependencies**: Standalone BLE implementation, no bluetti_mqtt required
 
 ## Requirements
 
-- Domoticz 2025.x.x with Python plugin support
+- Domoticz 2025.x or later with Python plugin support
 - Raspberry Pi or Linux system with Bluetooth capability
 - Python 3.9+
 - Bluetti AC500 power station with BLE enabled
 
 ## Installation
 
-1. **Clone/download** this plugin to your Domoticz plugins directory:
+1. **Clone** this plugin to your Domoticz plugins directory:
    ```bash
    cd /home/pi/domoticz/plugins/
-   git clone https://github.com/lemassykoi/Domoticz-Bluetti-Plugin.git Domoticz-Bluetti
+   git clone https://github.com/lemassykoi/Domoticz-Bluetti-Plugin.git
    ```
 
-2. **Install Python dependencies**:
+2. **Install Python dependencies** (as root, required for the Domoticz embedded interpreter):
    ```bash
-   cd Domoticz-Bluetti
-   pip install -r requirements.txt
+   cd Domoticz-Bluetti-Plugin
+   sudo pip install -r requirements.txt --break-system-packages
    ```
 
-3. **Restart Domoticz** and find your Bluetti MAC address:
+3. **Find your Bluetti MAC address**:
+   ```bash
+   sudo hcitool lescan | grep -i bluetti
+   ```
+
+4. **Restart Domoticz**:
    ```bash
    sudo systemctl restart domoticz
-   sudo hcitool lescan | grep -i bluetti
    ```
 
 ## Configuration
 
 1. Go to **Setup → Hardware** in Domoticz
 2. Add hardware type: **Bluetti AC500 Poller via BLE**
-3. Enter your Bluetti's **MAC address** (format: XX:XX:XX:XX:XX:XX)
-4. Set **polling interval** (default: 20 seconds)
-5. Choose **debug level** if needed
+3. Configure the parameters:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| MAC Address | Bluetti BLE address (format: `XX:XX:XX:XX:XX:XX`) | — |
+| Polling Interval | Seconds between data polls (minimum 5) | `20` |
+| Room Plan Name | Domoticz room plan for auto-assignment | `Bluetti AC500` |
+| Debug | Logging level: None / Plugin Debug / All | `None` |
+| BLE Adapter | Bluetooth adapter (e.g., `hci0`), leave empty for auto | — |
 
 ## Devices Created
 
 The plugin automatically creates these devices:
 
 ### Power Monitoring
-- AC Input/Output Power
-- DC Input/Output Power  
+- AC Input/Output Power (kWh)
+- DC Input/Output Power (kWh)
+- AC Charging Power (kWh)
+- Internal DC Power (kWh)
+- Power Generation (kWh)
 - Total Battery Percentage
-- Battery Pack status (Pack 2 & 4)
 
 ### Controls
 - AC/DC Output switches
-- UPS Mode selector (Customized/PV Priority/Standard/Time Control)
+- UPS Mode selector (Customized / PV Priority / Standard / Time Control)
 - Grid Charge toggle
 - Time Control toggle
+- Battery Range Start/End (display + dimmer control)
+
+### Battery Packs
+- Pack 2 & Pack 4: Total Voltage, Voltage, Battery Percentage
+
+### Info & Advanced
+- Device Type, Serial Number, ARM/DSP Firmware versions
+- Time Control Schedule (decoded display)
+- Internal AC/DC Voltage, Current, Frequency
 
 <img width="1028" height="849" alt="image" src="https://github.com/user-attachments/assets/99e49748-2f48-4b0a-9296-1ee9fdbaf03a" />
-
-### Advanced
-- Battery Range settings (Start/End percentage)
-- Time Control Schedule (decoded display)
-- Device info (Type, Serial, Firmware versions)
 
 ## Troubleshooting
 
 ### Connection Issues
-- Ensure Bluetti has Bluetooth enabled from LCD Screen
-- Only 1 connection is allowed with Bluetooth. If Bluetooth indicates "Connected" on LCD screen, switch it Off, wait for "Disconnected", then switch it On
+- Ensure Bluetti has Bluetooth enabled from the LCD screen
+- Only **one BLE connection** is allowed at a time. If the LCD shows "Connected", toggle Bluetooth Off, wait for "Disconnected", then switch it back On
 - Restart Bluetooth service: `sudo systemctl restart bluetooth`
-- Check MAC address is correct: `bluetoothctl devices`
+- Check MAC address: `bluetoothctl devices`
 
 ### Plugin Not Starting
-- Check Domoticz logs
-- Verify Python dependencies are installed
-- Run `test_standalone.py`
+- Check Domoticz logs for error messages
+- Verify Python dependencies: `pip show bleak crcmod`
+- Test BLE connectivity: edit the MAC address in `test_standalone.py` and run `python3 test_standalone.py`
+
+### Plugin Restart Issues
+- The plugin runs `bluetoothctl disconnect` on stop to ensure clean BLE release
+- If reconnection still fails after a plugin-only restart, restart Domoticz: `sudo systemctl restart domoticz`
 
 ### No Data Updates
-- Check polling interval (minimum 5 seconds)
+- Check polling interval (minimum 5 seconds recommended)
 - Verify Bluetooth connection is stable
-- Enable debug logging for more details
+- Enable debug logging (Plugin Debug) for detailed diagnostics
 
 ## Technical Notes
 
-- Compatible with **bleak 1.0+** (latest version)
-- Uses **standalone BLE implementation** (no bluetti_mqtt dependency)
-- Handles **automatic reconnection** and error recovery
-- Supports **Modbus over BLE** communication protocol
+- Compatible with **bleak 0.21+** (tested with 2.1.x)
+- **Standalone BLE implementation** using Modbus over BLE GATT
+- Non-blocking architecture: BLE runs in a worker thread, device updates on the main thread
+- Automatic reconnection with exponential backoff (up to 10 retries)
+- Thread-safe: all `Devices[].Update()` calls happen in `onHeartbeat` on the main thread
 
 ## Version History
 
+- **v0.6.0**: Full Domoticz plugin standards conformity, room plan management, optimistic UI, clean plugin restart
 - **v0.5.0**: Standalone implementation, latest bleak compatibility
-- **v0.4.0**: Fully Customized Sensors
+- **v0.4.0**: Fully customized sensors
 - **v0.3.1**: Added UPS mode, battery range, time control features
 - **v0.2.1**: Initial BLE implementation
 
@@ -106,8 +130,4 @@ Inspired from https://github.com/ftrueck/bluetti_mqtt
 
 ## License
 
-MIT License - feel free to modify and distribute.
-
-## Support
-
-For issues and questions, please check the Domoticz forum or create an issue in this repository.
+MIT License - see [LICENSE](LICENSE) file.
