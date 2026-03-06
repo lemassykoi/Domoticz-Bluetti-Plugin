@@ -73,8 +73,11 @@ The plugin automatically creates these devices:
 - AC/DC Output switches
 - UPS Mode selector (Customized / PV Priority / Standard / Time Control)
 - Grid Charge toggle
+- Grid Charge Current selector (3A / 5A / 7A / 10A) ¹
 - Time Control toggle
 - Battery Range Start/End (display + dimmer control)
+
+> ¹ **Grid Charge Current** writes to register 3019 which is **write-only**. Reading it always returns 1 regardless of the actual setting. Domoticz shows only the value last set via BLE command (optimistic UI update). Changes made on the AC500 touchscreen will **not** be reflected in Domoticz.
 
 ### Battery Packs
 - Pack 2 & Pack 4: Total Voltage, Voltage, Battery Percentage
@@ -118,6 +121,7 @@ The plugin automatically creates these devices:
 
 ## Version History
 
+- **v0.6.1**: Grid charge current selector (register 3019, write-only), auto-update selector options on existing devices
 - **v0.6.0**: Full Domoticz plugin standards conformity, room plan management, optimistic UI, clean plugin restart
 - **v0.5.0**: Standalone implementation, latest bleak compatibility
 - **v0.4.0**: Fully customized sensors
@@ -127,6 +131,8 @@ The plugin automatically creates these devices:
 ## Thanks
 
 Inspired from https://github.com/ftrueck/bluetti_mqtt
+
+Register 3019 (grid charge current) identified via [Mike's Electric Stuff](https://electricstuff.co.uk/bluetti.html)
 
 ## License
 

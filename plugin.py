@@ -98,6 +98,7 @@ BLUETTI_DEVICE_DEFINITIONS = [
     ("Bluetti Internal DC Current",   26, "Current (Single)", 243, 23, "intdccurr",      0, 0, {}, {}, "internal_dc_input_current", 0),
     ("Bluetti AC Output Mode",        13, "Selector Switch",  244, 62, "acoutmode",     18, 0, {"LevelActions": "|||||", "LevelNames": "Off|Stop|Inverter Output|Bypass Output C|Bypass Output D|Load Matching", "LevelOffHidden": "false", "SelectorStyle": "1"}, {}, "ac_output_mode", 0),
     ("Bluetti UPS Mode",              30, "Selector Switch",  244, 62, "upsmode",       18, 0, {"LevelActions": "||||", "LevelNames": "Off|Customized|PV Priority|Standard|Time Control", "LevelOffHidden": "false", "SelectorStyle": "1"}, {}, "ups_mode", 1),
+    ("Bluetti Grid Charge Current",   65, "Selector Switch",  244, 62, "gridchargecurr", 18, 0, {"LevelActions": "||||", "LevelNames": "Off|3A|5A|7A|10A", "LevelOffHidden": "true", "SelectorStyle": "0"}, {}, "grid_charge_current", 1),
 ]
 
 PACK_DEVICE_UNIT_START_OFFSET = 35
@@ -340,6 +341,19 @@ class BasePlugin:
                         Domoticz.Error(f"Error applying custom options to {name}: {e}")
             else:
                 Domoticz.Log(f"Found existing Unit {unit_id} ('{name}')...")
+                if create_opts_selector:
+                    try:
+                        current_opts = Devices[unit_id].Options if hasattr(Devices[unit_id], 'Options') else {}
+                        opts_changed = False
+                        for ok, ov in create_opts_selector.items():
+                            if str(current_opts.get(ok)) != str(ov):
+                                opts_changed = True
+                                break
+                        if opts_changed:
+                            Domoticz.Log(f"Updating selector options for Unit {unit_id} ('{name}')...")
+                            Devices[unit_id].Update(nValue=Devices[unit_id].nValue, sValue=Devices[unit_id].sValue, Options=create_opts_selector)
+                    except Exception as e:
+                        Domoticz.Error(f"Error updating selector options for {name}: {e}")
 
             self.device_unit_map[json_key] = unit_id
 
@@ -654,6 +668,9 @@ class BasePlugin:
                         nvalue = curr_nval
                         changed = (svalue != curr_sval)
 
+                elif json_key == "grid_charge_current":
+                    continue
+
                 else:
                     Domoticz.Log(f"WARNING: No update logic for '{json_key}'.")
                     continue
@@ -732,6 +749,16 @@ class BasePlugin:
                             Domoticz.Error(f"Invalid Level '{Level}' for UPS Mode")
                     except ValueError:
                         Domoticz.Error(f"Invalid Level '{Level}' for UPS Mode.")
+                elif key == "grid_charge_current":
+                    try:
+                        level_to_amps = {10: 3, 20: 5, 30: 7, 40: 10}
+                        amp_val = level_to_amps.get(int(Level))
+                        if amp_val is not None:
+                            cmd_details = {"register": 3019, "value": amp_val}
+                        else:
+                            Domoticz.Error(f"Invalid Level '{Level}' for Grid Charge Current")
+                    except ValueError:
+                        Domoticz.Error(f"Invalid Level '{Level}' for Grid Charge Current.")
                 elif key == "battery_range_start_control":
                     try:
                         battery_val = int(Level)
@@ -770,7 +797,7 @@ class BasePlugin:
         if key in ["ac_output_on", "dc_output_on", "grid_charge_on", "time_control_on"]:
             nval = 1 if str(command).lower() == "on" else 0
             Devices[unit].Update(nValue=nval, sValue=str(nval), TimedOut=0)
-        elif key == "ups_mode":
+        elif key in ["ups_mode", "grid_charge_current"]:
             Devices[unit].Update(nValue=2, sValue=str(int(level)), TimedOut=0)
         elif key in ["battery_range_start_control", "battery_range_end_control"]:
             Devices[unit].Update(nValue=2, sValue=str(int(level)), TimedOut=0)
