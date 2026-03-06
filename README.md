@@ -99,7 +99,7 @@ The plugin automatically creates these devices:
 
 ### Plugin Not Starting
 - Check Domoticz logs for error messages
-- Verify Python dependencies: `pip show bleak crcmod`
+- Verify Python dependencies: `sudo pip show bleak crcmod`
 - Test BLE connectivity: edit the MAC address in `test_standalone.py` and run `python3 test_standalone.py`
 
 ### Plugin Restart Issues
