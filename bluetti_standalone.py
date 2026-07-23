@@ -396,6 +396,7 @@ class SyncBluettiClient:
             self.connected = result
             return result
         except Exception as e:
+            future.cancel()
             self.logger.error(f"Connection failed: {e}")
             return False
 
@@ -439,6 +440,7 @@ class SyncBluettiClient:
         try:
             return future.result(timeout=30)
         except Exception as e:
+            future.cancel()
             self.logger.error(f"Poll failed: {e}")
             return {}
 
@@ -450,6 +452,7 @@ class SyncBluettiClient:
         try:
             return future.result(timeout=10)
         except Exception as e:
+            future.cancel()
             self.logger.error(f"Command failed: {e}")
             return False
 

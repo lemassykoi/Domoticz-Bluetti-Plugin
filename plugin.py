@@ -420,10 +420,14 @@ class BasePlugin:
                         try:
                             item = self.command_queue.get_nowait()
                             if item == "POLL_DATA":
-                                self._poll_data()
+                                if not self._poll_data():
+                                    connected = False
+                                    Domoticz.Log("Polling failed; reconnecting to Bluetti device...")
+                                    self.bluetti_client.disconnect()
                             elif isinstance(item, dict) and item.get("action") == "SEND_COMMAND":
                                 if not self._send_command(item['details']):
                                     connected = False
+                                    self.bluetti_client.disconnect()
                                     self.message_queue.put({"Type": "Log", "Text": "Command failed, connection may be lost..."})
                             self.command_queue.task_done()
                         except _queue.Empty:
